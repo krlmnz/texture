@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pattern to Weaving Grid</title>
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        html, body {
+            width: 100%;
+            font-family: Geneva, Tahoma, sans-serif;
+            background: #F5F7F8;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .container {
+            width: 90%;
+            max-width: 800px;
+            margin-top: 20px;
+        }
+
+        .grid-container {
+            display: grid;
+            gap: 1px;
+            margin-top: 20px;
+            max-width: 512px;
+            overflow: auto;
+        }
+
+        .cell {
+            background-color: #fff;
+            border: 1px solid #ddd;
+        }
+
+        #canvas-container {
+            display: none;
+        }
+
+        .info {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Pattern to Weaving Grid</h1>
+        <input type="file" id="imageUpload" accept="image/*" class="form-control mb-3">
+        <div id="dropArea" class="border p-3 text-center">
+            Drag & Drop Image Here
+        </div>
+        <button id="downloadPNG" class="btn btn-primary mt-3">Download PNG</button>
+        <button id="downloadSVG" class="btn btn-secondary mt-3">Download SVG</button>
+        <button id="copySVG" class="btn btn-secondary mt-3">Copy SVG to Clipboard</button>
+        <div id="gridContainer" class="grid-container"></div>
+        <div class="info" id="infoContainer"></div>
+    </div>
+    <div id="canvas-container">
+        <canvas id="canvas"></canvas>
+    </div>
+
+    <script>
+        const imageUpload = document.getElementById('imageUpload');
+        const dropArea = document.getElementById('dropArea');
+        const gridContainer = document.getElementById('gridContainer');
+        const infoContainer = document.getElementById('infoContainer');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const downloadPNG = document.getElementById('downloadPNG');
+        const downloadSVG = document.getElementById('downloadSVG');
+        const copySVG = document.getElementById('copySVG');
+
+        imageUpload.addEventListener('change', handleImageUpload);
+        dropArea.addEventListener('dragover', handleDragOver);
+        dropArea.addEventListener('drop', handleDrop);
+
+        function handleImageUpload(event) {
+            const file = event.target.files[0];
+            processImage(file);
+        }
+
+        function handleDragOver(event) {
+            event.preventDefault();
+        }
+
+        function handleDrop(event) {
+            event.preventDefault();
+            const file = event.dataTransfer.files[0];
+            processImage(file);
+        }
+
+        function processImage(file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = new Image();
+                img.onload = function() {
+                    const [croppedImage, width, height] = cropAndScaleImage(img);
+                    createGrid(croppedImage, width, height);
+                    displayInfo(width, height);
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function cropAndScaleImage(img) {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            ctx.drawImage(img, 0, 0, img.width, img.height);
+
+            const imageData = ctx.getImageData(0, 0, img.width, img.height).data;
+            let minX = img.width, minY = img.height, maxX = 0, maxY = 0;
+
+            for (let y = 0; y < img.height; y++) {
+                for (let x = 0; x < img.width; x++) {
+                    const index = (y * img.width + x) * 4;
+                    const brightness = (imageData[index] + imageData[index + 1] + imageData[index + 2]) / 3;
+                    if (brightness < 128) {
+                        if (x < minX) minX = x;
+                        if (x > maxX) maxX = x;
+                        if (y < minY) minY = y;
+                        if (y > maxY) maxY = y;
+                    }
+                }
+            }
+
+            const croppedWidth = maxX - minX + 1;
+            const croppedHeight = maxY - minY + 1;
+
+            const maxDimension = Math.max(croppedWidth, croppedHeight);
+            const scaleFactor = maxDimension > 48 ? 48 / maxDimension : 1;
+
+            const scaledWidth = Math.floor(croppedWidth * scaleFactor);
+            const scaledHeight = Math.floor(croppedHeight * scaleFactor);
+
+            canvas.width = scaledWidth;
+            canvas.height = scaledHeight;
+            ctx.drawImage(img, minX, minY, croppedWidth, croppedHeight, 0, 0, scaledWidth, scaledHeight);
+
+            return [ctx.getImageData(0, 0, scaledWidth, scaledHeight).data, scaledWidth, scaledHeight];
+        }
+
+        function createGrid(imageData, width, height) {
+            gridContainer.innerHTML = ''; // Clear previous grid
+
+            // Calculate cell size ensuring maximum width of 512px
+            const maxGridWidth = 512;
+            const cellSize = Math.min(maxGridWidth / width, maxGridWidth / height);
+
+            gridContainer.style.gridTemplateColumns = `repeat(${width}, ${cellSize}px)`;
+            gridContainer.style.gridTemplateRows = `repeat(${height}, ${cellSize}px)`;
+
+            for (let i = 0; i < width * height; i++) {
+                const r = imageData[i * 4];
+                const g = imageData[i * 4 + 1];
+                const b = imageData[i * 4 + 2];
+                const cell = document.createElement('div');
+                cell.classList.add('cell');
+                cell.style.width = `${cellSize}px`;
+                cell.style.height = `${cellSize}px`;
+                cell.style.backgroundColor = `rgb(${r}, ${g}, ${b})`; // Set the cell color
+                gridContainer.appendChild(cell);
+            }
+        }
+
+        function displayInfo(width, height) {
+            infoContainer.innerHTML = `
+                <p>Grid Size: ${width} x ${height}</p>
+                <p>Aspect Ratio: ${(width / height).toFixed(2)}</p>
+            `;
+        }
+
+        downloadPNG.addEventListener('click', () => {
+            const width = parseInt(gridContainer.style.gridTemplateColumns.split(' ').length);
+            const height = parseInt(gridContainer.style.gridTemplateRows.split(' ').length);
+            canvas.width = width * 20;
+            canvas.height = height * 20;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            const cells = gridContainer.querySelectorAll('.cell');
+            cells.forEach((cell, index) => {
+                const x = (index % width) * 20;
+                const y = Math.floor(index / width) * 20;
+                ctx.fillStyle = cell.style.backgroundColor;
+                ctx.fillRect(x, y, 20, 20);
+            });
+
+            const link = document.createElement('a');
+            link.download = 'pattern.png';
+            link.href = canvas.toDataURL();
+            link.click();
+        });
+
+        downloadSVG.addEventListener('click', () => {
+            const svg = createSVG();
+            const blob = new Blob([svg], { type: 'image/svg+xml' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.download = 'pattern.svg';
+            link.href = url;
+            link.click();
+        });
+
+        copySVG.addEventListener('click', () => {
+            const svg = createSVG();
+            navigator.clipboard.writeText(svg).then(() => {
+                alert('SVG copied to clipboard');
+            }).catch(err => {
+                console.error('Failed to copy SVG: ', err);
+            });
+        });
+
+        function createSVG() {
+            const width = parseInt(gridContainer.style.gridTemplateColumns.split(' ').length);
+            const height = parseInt(gridContainer.style.gridTemplateRows.split(' ').length);
+            let svgContent = `<svg width="${width * 20}" height="${height * 20}" xmlns="http://www.w3.org/2000/svg">`;
+            const cells = gridContainer.querySelectorAll('.cell');
+            cells.forEach((cell, index) => {
+                const x = (index % width) * 20;
+                const y = Math.floor(index / width) * 20;
+                const color = cell.style.backgroundColor;
+                svgContent += `<rect x="${x}" y="${y}" width="20" height="20" fill="${color}" stroke="black" stroke-width="0.1"/>`;
+            });
+            svgContent += `</svg>`;
+            return svgContent;
+        }
+    </script>
+</body>
+</html>
